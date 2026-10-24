@@ -1,0 +1,15 @@
+AISR Quadrotor Drone – Controller Comparison
+======================================================================
+Metric                                 Baseline PID            Tuned PID             
+-----------------------------------    --------------------    --------------------  
+Altitude RMSE (m)                      4.1842                  2.5624                
+Altitude Mean Error (m)                4.1495                  2.5315                
+Altitude Max Error (m)                 6.0775                  5.0000                
+Altitude Overshoot (%)                 121.55                  76.20                 
+Altitude Settling Time (s)             Never                   Never                 
+X RMSE (m)                             2.6777                  2.3366                
+Z RMSE (m)                             1.6082                  1.9261                
+3-D RMSE (m)                           5.2215                  3.9667                
+3-D Max Error (m)                      7.8106                  6.9214                
+WP Success Rate (%)                    100.0                   100.0                 
+Mission Time (s)                       25.0                    27.9                  

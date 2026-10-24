@@ -1,0 +1,168 @@
+#VRML_SIM R2023b utf8
+
+# =============================================================================
+# Webots World File – Mavic 2 Pro Survey Mission
+# Compatible with Webots R2023a / R2023b
+# =============================================================================
+# Scene:  flat terrain, 6 survey waypoints in a rectangular pattern
+# Drone:  DJI Mavic 2 Pro at the world origin
+# Controller: mavic2pro_controller (auto-launched by Webots)
+# =============================================================================
+
+WorldInfo {
+  info [
+    "AISR Quadrotor Drone – Altitude and Waypoint Control"
+    "Webots R2023b"
+    "Controller: mavic2pro_controller"
+  ]
+  title "Mavic 2 Pro Survey Mission"
+  basicTimeStep 32
+  defaultDamping Damping {
+    linear 0
+    angular 0
+  }
+}
+
+Viewpoint {
+  orientation -0.3648 0.8757 0.3163 1.4542
+  position -12.0 15.0 12.0
+  follow "Mavic 2 Pro"
+}
+
+TexturedBackground {
+}
+
+TexturedBackgroundLight {
+}
+
+RectangleArena {
+  floorSize 40 40
+  floorAppearance SandyGround {
+  }
+  wallThickness 0.1
+  wallHeight 0.5
+  wallAppearance BrushedAluminium {
+  }
+}
+
+# =============================================================================
+# Survey waypoint markers (yellow cylinders on the ground)
+# =============================================================================
+
+# Waypoint A  (5, 0)
+Solid {
+  translation 5 0.05 0
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 1 0
+        }
+      }
+      geometry Cylinder {
+        height 0.1
+        radius 0.25
+      }
+    }
+  ]
+  name "WP_A"
+}
+
+# Waypoint B  (5, -5)
+Solid {
+  translation 5 0.05 -5
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 0.5 0
+        }
+      }
+      geometry Cylinder {
+        height 0.1
+        radius 0.25
+      }
+    }
+  ]
+  name "WP_B"
+}
+
+# Waypoint C  (0, -5)
+Solid {
+  translation 0 0.05 -5
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 0 1 0.5
+        }
+      }
+      geometry Cylinder {
+        height 0.1
+        radius 0.25
+      }
+    }
+  ]
+  name "WP_C"
+}
+
+# Waypoint D  (-5, -5)
+Solid {
+  translation -5 0.05 -5
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 0 0.5 1
+        }
+      }
+      geometry Cylinder {
+        height 0.1
+        radius 0.25
+      }
+    }
+  ]
+  name "WP_D"
+}
+
+# Waypoint E  (-5, 0)
+Solid {
+  translation -5 0.05 0
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 0.6 0 1
+        }
+      }
+      geometry Cylinder {
+        height 0.1
+        radius 0.25
+      }
+    }
+  ]
+  name "WP_E"
+}
+
+# =============================================================================
+# DJI Mavic 2 Pro drone
+# =============================================================================
+
+Mavic2Pro {
+  translation 0 0.1 0
+  rotation 0 1 0 0
+  name "Mavic 2 Pro"
+  controller "mavic2pro_controller"
+  controllerArgs "--experiment baseline"
+  customData ""
+  supervisor FALSE
+  synchronization TRUE
+  cameraSlot [
+    Camera {
+      width 400
+      height 240
+      near 0.2
+      far 100
+    }
+  ]
+}

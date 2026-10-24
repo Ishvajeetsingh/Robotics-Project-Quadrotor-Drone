@@ -1,0 +1,161 @@
+# =============================================================================
+# Quadrotor Drone – Survey Mission Configuration
+# =============================================================================
+# Edit this file to change waypoints, controller gains, or simulation settings.
+# Coordinate system: Webots world frame  X = East, Y = Up, Z = South
+# (Webots uses a right-handed coordinate system with Y pointing up)
+# =============================================================================
+
+simulation:
+  timestep_ms: 32          # Webots basic timestep (ms) – must match world file
+  max_mission_time_s: 300  # Abort mission after this many seconds
+  world_file: "simulation/mavic_survey.wbt"
+
+drone:
+  start_position: [0.0, 0.0, 0.0]   # [X, Y, Z] metres  (Webots world frame)
+  target_altitude_m: 5.0             # Desired cruise altitude in metres
+  takeoff_speed_ms: 1.5              # Vertical climb rate target (m/s)
+
+waypoints:
+  # Each waypoint: [X, Z]  (horizontal plane; Y = altitude is held by controller)
+  # X = East/West offset from origin, Z = South/North offset
+  arrival_radius_m: 0.8              # Drone is "at waypoint" within this radius
+  dwell_time_s: 2.0                  # Seconds to hover at each waypoint
+  points:
+    - id: 0
+      label: "Takeoff / Home"
+      x: 0.0
+      z: 0.0
+    - id: 1
+      label: "Survey Point A"
+      x: 5.0
+      z: 0.0
+    - id: 2
+      label: "Survey Point B"
+      x: 5.0
+      z: -5.0
+    - id: 3
+      label: "Survey Point C"
+      x: 0.0
+      z: -5.0
+    - id: 4
+      label: "Survey Point D"
+      x: -5.0
+      z: -5.0
+    - id: 5
+      label: "Survey Point E"
+      x: -5.0
+      z: 0.0
+    - id: 6
+      label: "Return Home"
+      x: 0.0
+      z: 0.0
+
+# =============================================================================
+# Controller Gains – Baseline
+# =============================================================================
+controller_baseline:
+  name: "Baseline PID"
+  # Altitude / vertical velocity PID
+  altitude:
+    kp: 10.0
+    ki: 2.0
+    kd: 5.0
+    integrator_limit: 5.0
+    output_limit: 100.0
+  # Roll PID (stabilises left-right tilt)
+  roll:
+    kp: 50.0
+    ki: 0.0
+    kd: 5.0
+    integrator_limit: 2.0
+    output_limit: 100.0
+  # Pitch PID (stabilises forward-back tilt)
+  pitch:
+    kp: 30.0
+    ki: 0.0
+    kd: 5.0
+    integrator_limit: 2.0
+    output_limit: 100.0
+  # Yaw rate PID
+  yaw:
+    kp: 2.0
+    ki: 0.5
+    kd: 0.1
+    integrator_limit: 2.0
+    output_limit: 100.0
+  # Horizontal position control (generates roll/pitch targets)
+  position:
+    kp: 1.5
+    ki: 0.0
+    kd: 0.5
+    integrator_limit: 3.0
+    output_limit: 0.4    # radians – clamps desired roll/pitch angle
+
+# =============================================================================
+# Controller Gains – Tuned
+# =============================================================================
+controller_tuned:
+  name: "Tuned PID"
+  altitude:
+    kp: 15.0
+    ki: 3.0
+    kd: 8.0
+    integrator_limit: 5.0
+    output_limit: 100.0
+  roll:
+    kp: 70.0
+    ki: 0.5
+    kd: 8.0
+    integrator_limit: 2.0
+    output_limit: 100.0
+  pitch:
+    kp: 50.0
+    ki: 0.5
+    kd: 8.0
+    integrator_limit: 2.0
+    output_limit: 100.0
+  yaw:
+    kp: 3.0
+    ki: 0.5
+    kd: 0.2
+    integrator_limit: 2.0
+    output_limit: 100.0
+  position:
+    kp: 2.5
+    ki: 0.1
+    kd: 0.8
+    integrator_limit: 3.0
+    output_limit: 0.5
+
+logging:
+  csv_dir: "results"
+  filename_prefix: "flight_log"
+  fields:
+    - time_s
+    - waypoint_id
+    - desired_x
+    - desired_y
+    - desired_z
+    - actual_x
+    - actual_y
+    - actual_z
+    - desired_alt
+    - actual_alt
+    - roll
+    - pitch
+    - yaw
+    - motor_fl
+    - motor_fr
+    - motor_rl
+    - motor_rr
+    - error_x
+    - error_y
+    - error_z
+    - error_3d
+
+analysis:
+  settling_tolerance_m: 0.3       # Altitude considered "settled" within ±this
+  settling_duration_s: 1.5        # Must stay within tolerance for this long
+  results_dir: "results/metrics"
+  graphs_dir: "results/graphs"

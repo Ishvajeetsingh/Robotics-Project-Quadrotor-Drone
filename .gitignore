@@ -1,0 +1,45 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Webots
+.webots_cache/
+*.wbproj
+
+# Results (kept in repo structure but excluded from tracking large runs)
+results/experiment_baseline/*.csv
+results/experiment_tuned/*.csv
+results/graphs/**/*.png
+results/metrics/*.json
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Pytest cache
+.pytest_cache/
