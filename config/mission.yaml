@@ -58,39 +58,39 @@ controller_baseline:
   name: "Baseline PID"
   # Altitude / vertical velocity PID
   altitude:
-    kp: 10.0
-    ki: 2.0
-    kd: 5.0
-    integrator_limit: 5.0
-    output_limit: 100.0
+    kp: 5.0
+    ki: 0.3
+    kd: 3.5
+    integrator_limit: 2.0
+    output_limit: 15.0
   # Roll PID (stabilises left-right tilt)
   roll:
-    kp: 50.0
+    kp: 6.0
     ki: 0.0
-    kd: 5.0
-    integrator_limit: 2.0
-    output_limit: 100.0
+    kd: 1.5
+    integrator_limit: 1.0
+    output_limit: 10.0
   # Pitch PID (stabilises forward-back tilt)
   pitch:
-    kp: 30.0
+    kp: 5.0
     ki: 0.0
-    kd: 5.0
-    integrator_limit: 2.0
-    output_limit: 100.0
+    kd: 1.5
+    integrator_limit: 1.0
+    output_limit: 10.0
   # Yaw rate PID
   yaw:
     kp: 2.0
-    ki: 0.5
+    ki: 0.2
     kd: 0.1
-    integrator_limit: 2.0
-    output_limit: 100.0
+    integrator_limit: 1.0
+    output_limit: 10.0
   # Horizontal position control (generates roll/pitch targets)
   position:
-    kp: 1.5
+    kp: 0.4
     ki: 0.0
-    kd: 0.5
-    integrator_limit: 3.0
-    output_limit: 0.4    # radians – clamps desired roll/pitch angle
+    kd: 0.2
+    integrator_limit: 1.0
+    output_limit: 0.12    # radians (~6.9 deg) – clamps desired roll/pitch angle
 
 # =============================================================================
 # Controller Gains – Tuned
@@ -98,35 +98,35 @@ controller_baseline:
 controller_tuned:
   name: "Tuned PID"
   altitude:
-    kp: 15.0
-    ki: 3.0
-    kd: 8.0
-    integrator_limit: 5.0
-    output_limit: 100.0
+    kp: 8.0
+    ki: 0.6
+    kd: 5.0
+    integrator_limit: 2.0
+    output_limit: 20.0
   roll:
-    kp: 70.0
-    ki: 0.5
-    kd: 8.0
-    integrator_limit: 2.0
-    output_limit: 100.0
-  pitch:
-    kp: 50.0
-    ki: 0.5
-    kd: 8.0
-    integrator_limit: 2.0
-    output_limit: 100.0
-  yaw:
-    kp: 3.0
-    ki: 0.5
-    kd: 0.2
-    integrator_limit: 2.0
-    output_limit: 100.0
-  position:
-    kp: 2.5
+    kp: 8.5
     ki: 0.1
-    kd: 0.8
-    integrator_limit: 3.0
-    output_limit: 0.5
+    kd: 2.2
+    integrator_limit: 1.0
+    output_limit: 12.0
+  pitch:
+    kp: 7.5
+    ki: 0.1
+    kd: 2.2
+    integrator_limit: 1.0
+    output_limit: 12.0
+  yaw:
+    kp: 2.5
+    ki: 0.3
+    kd: 0.15
+    integrator_limit: 1.0
+    output_limit: 10.0
+  position:
+    kp: 0.6
+    ki: 0.02
+    kd: 0.35
+    integrator_limit: 1.0
+    output_limit: 0.18
 
 logging:
   csv_dir: "results"

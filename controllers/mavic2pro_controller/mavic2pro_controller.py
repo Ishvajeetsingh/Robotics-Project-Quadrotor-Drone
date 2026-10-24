@@ -90,12 +90,20 @@ class MavicController:
         init → run loop → teardown
     """
 
-    def __init__(self, config_path: Path | None = None, experiment: str = "baseline") -> None:
+    def __init__(
+        self,
+        config_path: Path | None = None,
+        experiment: str = "baseline",
+        stage: str = "full",
+        max_time_override: float | None = None,
+    ) -> None:
         """
         Parameters
         ----------
-        config_path : Path to mission.yaml (auto-resolved if None).
-        experiment  : 'baseline' or 'tuned' – selects controller gains.
+        config_path       : Path to mission.yaml (auto-resolved if None).
+        experiment        : 'baseline' or 'tuned' – selects controller gains.
+        stage             : 'hover', 'single_waypoint', or 'full'.
+        max_time_override : Optional override for max mission time (seconds).
         """
         if not _IN_WEBOTS:
             raise RuntimeError(
@@ -104,6 +112,8 @@ class MavicController:
             )
 
         self._experiment = experiment
+        self._stage = stage
+        self._max_time_override = max_time_override
 
         # ---- Load configuration ----------------------------------------
         cfg_path = config_path or (_PROJECT_ROOT / "config" / "mission.yaml")
@@ -147,12 +157,25 @@ class MavicController:
         dt_s  = self._timestep / 1000.0
         self._controller = FlightController(gains=gains, dt_s=dt_s)
 
-        # ---- Waypoint manager ------------------------------------------
+        # ---- Waypoint manager (configured for stage) -------------------
+        if stage == "hover":
+            wps = [
+                {'id': 0, 'label': 'Takeoff / Hover', 'x': 0.0, 'z': 0.0},
+                {'id': 1, 'label': 'Hold Hover', 'x': 0.0, 'z': 0.0},
+            ]
+            dwell = 999.0
+        elif stage == "single_waypoint":
+            wps = self._cfg.waypoints[:2]
+            dwell = self._cfg.dwell_time_s
+        else:
+            wps = self._cfg.waypoints
+            dwell = self._cfg.dwell_time_s
+
         self._wp_manager = WaypointManager(
-            waypoints=self._cfg.waypoints,
+            waypoints=wps,
             target_altitude_m=self._cfg.target_altitude_m,
             arrival_radius_m=self._cfg.arrival_radius_m,
-            dwell_time_s=self._cfg.dwell_time_s,
+            dwell_time_s=dwell,
         )
 
         # ---- Data logger -----------------------------------------------
@@ -163,11 +186,13 @@ class MavicController:
             output_path=log_dir / log_name,
             fields=self._cfg.log_fields,
         )
+        effective_max = self._max_time_override or self._cfg.max_mission_time_s
         print(f"[controller] Logging to: {log_dir / log_name}")
         print(f"[controller] Experiment : {experiment}")
+        print(f"[controller] Stage      : {stage}")
         print(f"[controller] Controller : {gains.get('name', experiment)}")
-        print(f"[controller] Waypoints  : {len(self._cfg.waypoints)}")
-        print(f"[controller] Max time   : {self._cfg.max_mission_time_s} s")
+        print(f"[controller] Waypoints  : {len(wps)}")
+        print(f"[controller] Max time   : {effective_max:.1f} s")
 
     # ------------------------------------------------------------------
     # Main run loop
@@ -175,8 +200,11 @@ class MavicController:
 
     def run(self) -> None:
         """Execute the survey mission until completion or timeout."""
-        max_time = self._cfg.max_mission_time_s
+        max_time = self._max_time_override or self._cfg.max_mission_time_s
         step_count = 0
+        prev_alt = None
+        start_alt = None
+        dt_s = self._timestep / 1000.0
 
         try:
             while self._robot.step(self._timestep) != -1:
@@ -187,19 +215,62 @@ class MavicController:
                     print(f"[controller] Mission timeout at {t:.1f} s")
                     break
 
-                # ---- Read sensors -------------------------------------
+                # ---- Read sensors (Webots ENU frame) ------------------
+                # In Webots ENU:
+                #   gps_vals[0] = East (X)
+                #   gps_vals[1] = North (Y) -> mapped to internal horizontal coordinate 'z'
+                #   gps_vals[2] = Up (Z)    -> mapped to internal altitude coordinate 'y'
                 gps_vals  = self._gps.getValues()
                 imu_vals  = self._imu.getRollPitchYaw()
+                gyro_vals = self._gyro.getValues()
+
+                raw_x     = _safe_float(gps_vals[0])
+                raw_north = _safe_float(gps_vals[1])
+                raw_alt   = _safe_float(gps_vals[2])
+
+                # Guard against non-finite readings
+                if not (math.isfinite(raw_x) and math.isfinite(raw_north) and math.isfinite(raw_alt)):
+                    continue
+
+                if prev_alt is None:
+                    vy = 0.0
+                else:
+                    vy = (raw_alt - prev_alt) / dt_s
+                prev_alt = raw_alt
 
                 state = DroneState(
                     time_s=t,
-                    x=_safe_float(gps_vals[0]),
-                    y=_safe_float(gps_vals[1]),   # altitude
-                    z=_safe_float(gps_vals[2]),
+                    x=raw_x,
+                    y=raw_alt,    # Altitude in ENU is the 3rd GPS component
+                    z=raw_north,  # North horizontal coordinate in ENU
                     roll=_safe_float(imu_vals[0]),
                     pitch=_safe_float(imu_vals[1]),
                     yaw=_safe_float(imu_vals[2]),
+                    vy=_safe_float(vy),
+                    roll_rate=_safe_float(gyro_vals[0]),
+                    pitch_rate=_safe_float(gyro_vals[1]),
+                    yaw_rate=_safe_float(gyro_vals[2]),
                 )
+
+                # ---- Safety Divergence Watchdog -----------------------
+                if (
+                    abs(state.x) > 30.0
+                    or abs(state.z) > 30.0
+                    or state.y > 15.0
+                    or state.y < -1.0
+                    or abs(state.roll) > 1.2
+                    or abs(state.pitch) > 1.2
+                ):
+                    print(
+                        f"[controller] SAFETY WATCHDOG TRIGGERED at {t:.2f} s: State divergence detected!\n"
+                        f"  Pos: (X={state.x:.2f}, Alt={state.y:.2f}, Z={state.z:.2f})\n"
+                        f"  Attitude: (roll={math.degrees(state.roll):.1f} deg, pitch={math.degrees(state.pitch):.1f} deg)\n"
+                        f"  Aborting mission and cutting motor power."
+                    )
+                    for m in self._motors:
+                        m.setVelocity(0.0)
+                    self._wp_manager.abort()
+                    break
 
                 # ---- Mission state machine ----------------------------
                 phase = self._wp_manager.update(
@@ -209,9 +280,24 @@ class MavicController:
                     current_time_s=t,
                 )
 
-                target_x = self._wp_manager.target_x
-                target_z = self._wp_manager.target_z
-                target_y = self._wp_manager.target_y
+                if start_alt is None:
+                    start_alt = state.y
+
+                if phase == MissionPhase.TAKEOFF:
+                    if state.y < 0.20:
+                        self._controller.reset()
+                    target_x = state.x
+                    target_z = state.z
+                else:
+                    target_x = self._wp_manager.target_x
+                    target_z = self._wp_manager.target_z
+
+                # Smooth altitude trajectory during takeoff to avoid aggressive liftoff
+                if phase == MissionPhase.TAKEOFF:
+                    climb_speed = 1.2
+                    target_y = min(self._wp_manager.target_y, start_alt + climb_speed * t)
+                else:
+                    target_y = self._wp_manager.target_y
 
                 wp_id = self._wp_manager.current_waypoint_index
 
@@ -223,12 +309,18 @@ class MavicController:
                     target_z=target_z,
                 )
 
-                # ---- Set motor velocities ----------------------------
+                # ---- Set motor velocities (clamped to physical limits) --
                 # FL and RR spin CCW (+velocity), FR and RL spin CW (-velocity)
-                self._m_fl.setVelocity( commands.fl)
-                self._m_fr.setVelocity(-commands.fr)
-                self._m_rl.setVelocity(-commands.rl)
-                self._m_rr.setVelocity( commands.rr)
+                MAX_VELOCITY = 576.0
+                v_fl = min(MAX_VELOCITY, max(0.0, commands.fl))
+                v_fr = min(MAX_VELOCITY, max(0.0, commands.fr))
+                v_rl = min(MAX_VELOCITY, max(0.0, commands.rl))
+                v_rr = min(MAX_VELOCITY, max(0.0, commands.rr))
+
+                self._m_fl.setVelocity( v_fl)
+                self._m_fr.setVelocity(-v_fr)
+                self._m_rl.setVelocity(-v_rl)
+                self._m_rr.setVelocity( v_rr)
 
                 # ---- Log data ----------------------------------------
                 self._logger.log_step(
@@ -243,21 +335,23 @@ class MavicController:
                     roll=state.roll,
                     pitch=state.pitch,
                     yaw=state.yaw,
-                    motor_fl=commands.fl,
-                    motor_fr=commands.fr,
-                    motor_rl=commands.rl,
-                    motor_rr=commands.rr,
+                    motor_fl=v_fl,
+                    motor_fr=v_fr,
+                    motor_rl=v_rl,
+                    motor_rr=v_rr,
                 )
 
                 step_count += 1
 
                 # ---- Progress reporting (every 3 seconds) -----------
                 if step_count % (3000 // self._timestep) == 0:
+                    dist_to_wp = math.sqrt((target_x - state.x)**2 + (target_z - state.z)**2)
                     print(
                         f"[{t:7.1f}s] Phase={phase.name:12s} "
                         f"WP={wp_id}  "
-                        f"Pos=({state.x:.1f},{state.y:.1f},{state.z:.1f})  "
-                        f"Target=({target_x:.1f},{target_y:.1f},{target_z:.1f})  "
+                        f"Pos=({state.x:.2f},{state.z:.2f}) Alt={state.y:.2f}m  "
+                        f"Target=({target_x:.2f},{target_z:.2f}) Alt={target_y:.2f}m  "
+                        f"Dist={dist_to_wp:.2f}m  "
                         f"WPs reached={self._wp_manager.waypoints_reached}"
                     )
 
@@ -286,6 +380,7 @@ class MavicController:
 
 if __name__ == '__main__':
     import argparse
+    import shlex
 
     parser = argparse.ArgumentParser(description="Mavic 2 Pro survey controller")
     parser.add_argument(
@@ -294,7 +389,29 @@ if __name__ == '__main__':
         default='baseline',
         help='Controller gain set to use (default: baseline)',
     )
-    args, _ = parser.parse_known_args()
+    parser.add_argument(
+        '--stage',
+        choices=['hover', 'single_waypoint', 'full'],
+        default='full',
+        help='Verification stage to run (default: full)',
+    )
+    parser.add_argument(
+        '--max-time',
+        type=float,
+        default=None,
+        help='Override max mission duration in seconds',
+    )
 
-    ctrl = MavicController(experiment=args.experiment)
+    # Handle Webots passing controllerArgs as single string in argv[1]
+    raw_argv = sys.argv[1:]
+    if len(raw_argv) == 1 and ('--' in raw_argv[0] or ' ' in raw_argv[0]):
+        raw_argv = shlex.split(raw_argv[0])
+
+    args, _ = parser.parse_known_args(raw_argv)
+
+    ctrl = MavicController(
+        experiment=args.experiment,
+        stage=args.stage,
+        max_time_override=args.max_time,
+    )
     ctrl.run()

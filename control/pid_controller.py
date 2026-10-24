@@ -72,15 +72,18 @@ class PIDController:
         setpoint: float,
         measurement: float,
         current_time: float,
+        measurement_rate: Optional[float] = None,
     ) -> float:
         """
         Compute the next control output.
 
         Parameters
         ----------
-        setpoint      : Desired value.
-        measurement   : Actual measured value.
-        current_time  : Current simulation time in seconds.
+        setpoint         : Desired value.
+        measurement      : Actual measured value.
+        current_time     : Current simulation time in seconds.
+        measurement_rate : Optional direct rate of change of measurement (e.g. gyro rate).
+                           When provided, d_term = -kd * measurement_rate (avoids noise/lag).
 
         Returns
         -------
@@ -89,12 +92,12 @@ class PIDController:
         error = setpoint - measurement
 
         if not self._state.initialized:
-            # First call: no derivative available
+            # First call: no derivative available unless rate provided
             self._state.prev_error = error
             self._state.prev_time = current_time
             self._state.initialized = True
-            # P-only on first step
-            output = self.kp * error
+            d_term = -self.kd * measurement_rate if measurement_rate is not None else 0.0
+            output = self.kp * error + d_term
             return self._saturate(output)
 
         dt = current_time - self._state.prev_time
@@ -112,8 +115,11 @@ class PIDController:
         )
         i_term = self.ki * self._state.integral
 
-        # Derivative term (backward difference, no setpoint weighting)
-        d_term = self.kd * (error - self._state.prev_error) / dt
+        # Derivative term: direct rate feedback or backward difference
+        if measurement_rate is not None:
+            d_term = -self.kd * measurement_rate
+        else:
+            d_term = self.kd * (error - self._state.prev_error) / dt
 
         # Update state
         self._state.prev_error = error

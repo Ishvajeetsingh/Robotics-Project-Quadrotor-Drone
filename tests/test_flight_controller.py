@@ -97,6 +97,18 @@ class TestFlightControllerCompute:
                     'roll_input', 'pitch_input', 'yaw_input', 'base_thrust'):
             assert key in diag, f"Missing diagnostic key: {key}"
 
+    def test_gyro_rate_damping_damps_roll(self):
+        """When drone has positive roll rate (tilting right), damping creates restoring torque (right > left)."""
+        fc = FlightController(gains=GAINS)
+        # Level attitude but spinning right (roll_rate = +1.0)
+        state_spinning = DroneState(time_s=0.1, x=0.0, y=5.0, z=0.0, roll=0.0, roll_rate=1.0)
+        cmds, diag = fc.compute(state_spinning, target_x=0.0, target_y=5.0, target_z=0.0)
+        # Rate damping produces negative roll input (less thrust left, more right)
+        assert diag['roll_input'] < 0.0
+        assert cmds.fr > cmds.fl, "Right motors must exceed left to counteract positive roll rate"
+        assert cmds.rr > cmds.rl
+
+
 
 class TestFlightControllerReset:
     def test_reset_clears_all_pids(self):
@@ -112,3 +124,42 @@ class TestFlightControllerReset:
             pid = getattr(fc, pid_name)
             assert pid.integral == 0.0, f"{pid_name} integral not reset"
             assert not pid._state.initialized, f"{pid_name} not marked un-initialized"
+
+
+class TestFlightControllerMotorMixing:
+    """Verifies that attitude demands map to the correct physical motor differentials."""
+
+    def test_pitch_forward_increases_rear_motors(self):
+        """Moving forward (target_x > state.x) requires nose-down tilt: rear motors > front motors."""
+        fc = FlightController(gains=GAINS)
+        state = DroneState(time_s=0.0, x=0.0, y=5.0, z=0.0, roll=0.0, pitch=0.0, yaw=0.0)
+        # target_x = 5.0 (ahead) -> desired pitch > 0 (nose down)
+        cmds, diag = fc.compute(state, target_x=5.0, target_y=5.0, target_z=0.0)
+        assert diag['desired_pitch'] > 0.0, "Desired pitch should be positive (nose down) to move forward"
+        assert diag['pitch_input'] > 0.0
+        # Rear motors (RL, RR) must produce more thrust than Front motors (FL, FR)
+        assert cmds.rl > cmds.fl, f"RL ({cmds.rl:.2f}) must exceed FL ({cmds.fl:.2f}) to pitch forward"
+        assert cmds.rr > cmds.fr, f"RR ({cmds.rr:.2f}) must exceed FR ({cmds.fr:.2f}) to pitch forward"
+
+    def test_roll_right_increases_left_motors(self):
+        """Moving right/South (target_z < state.z) requires left-up tilt: left motors > right motors."""
+        fc = FlightController(gains=GAINS)
+        state = DroneState(time_s=0.0, x=0.0, y=5.0, z=0.0, roll=0.0, pitch=0.0, yaw=0.0)
+        # target_z = -5.0 (right/South) -> desired roll > 0 (left up, right down)
+        cmds, diag = fc.compute(state, target_x=0.0, target_y=5.0, target_z=-5.0)
+        assert diag['desired_roll'] > 0.0, "Desired roll should be positive (left up) to accelerate towards -Z"
+        assert diag['roll_input'] > 0.0
+        # Left motors (FL, RL) must produce more thrust than Right motors (FR, RR)
+        assert cmds.fl > cmds.fr, f"FL ({cmds.fl:.2f}) must exceed FR ({cmds.fr:.2f}) to roll right"
+        assert cmds.rl > cmds.rr, f"RL ({cmds.rl:.2f}) must exceed RR ({cmds.rr:.2f}) to roll right"
+
+    def test_yaw_ccw_increases_cw_motors(self):
+        """Positive yaw setpoint (CCW) requires CW reaction torque: CW motors (FR, RL) > CCW (FL, RR)."""
+        fc = FlightController(gains=GAINS)
+        state = DroneState(time_s=0.0, x=0.0, y=5.0, z=0.0, roll=0.0, pitch=0.0, yaw=0.0)
+        cmds, diag = fc.compute(state, target_x=0.0, target_y=5.0, target_z=0.0, target_yaw=0.5)
+        assert diag['yaw_input'] > 0.0
+        # CW motors: FR, RL; CCW motors: FL, RR
+        assert cmds.fr > cmds.fl, f"FR ({cmds.fr:.2f}) must exceed FL ({cmds.fl:.2f}) for CCW yaw"
+        assert cmds.rl > cmds.rr, f"RL ({cmds.rl:.2f}) must exceed RR ({cmds.rr:.2f}) for CCW yaw"
+

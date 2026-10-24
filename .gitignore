@@ -43,3 +43,13 @@ desktop.ini
 
 # Pytest cache
 .pytest_cache/
+
+# Local safety backups
+*.bak
+
+# Include reproducible simulation evidence
+!results/experiment_baseline/*.csv
+!results/experiment_tuned/*.csv
+!results/graphs/**/*.png
+!results/graphs/*.png
+!results/metrics/*.json

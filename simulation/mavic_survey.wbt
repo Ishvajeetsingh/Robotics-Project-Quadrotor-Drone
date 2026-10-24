@@ -1,8 +1,15 @@
-#VRML_SIM R2023b utf8
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/SandyGround.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/BrushedAluminium.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/dji/mavic/protos/Mavic2Pro.proto"
 
 # =============================================================================
-# Webots World File – Mavic 2 Pro Survey Mission
-# Compatible with Webots R2023a / R2023b
+# Webots World File - Mavic 2 Pro Survey Mission
+# Compatible with Webots R2025a
 # =============================================================================
 # Scene:  flat terrain, 6 survey waypoints in a rectangular pattern
 # Drone:  DJI Mavic 2 Pro at the world origin
@@ -11,22 +18,24 @@
 
 WorldInfo {
   info [
-    "AISR Quadrotor Drone – Altitude and Waypoint Control"
-    "Webots R2023b"
+    "AISR Quadrotor Drone - Altitude and Waypoint Control"
+    "Webots R2025a"
     "Controller: mavic2pro_controller"
   ]
   title "Mavic 2 Pro Survey Mission"
   basicTimeStep 32
   defaultDamping Damping {
-    linear 0
-    angular 0
+    linear 0.5
+    angular 0.5
   }
 }
 
 Viewpoint {
-  orientation -0.3648 0.8757 0.3163 1.4542
-  position -12.0 15.0 12.0
+  orientation 0.28 0.28 -0.92 1.9
+  position 10 -10 12
+  near 0.2
   follow "Mavic 2 Pro"
+  followSmoothness 0.2
 }
 
 TexturedBackground {
@@ -46,12 +55,13 @@ RectangleArena {
 }
 
 # =============================================================================
-# Survey waypoint markers (yellow cylinders on the ground)
+# Survey waypoint markers (cylinders standing upright on the arena floor)
 # =============================================================================
 
 # Waypoint A  (5, 0)
 Solid {
-  translation 5 0.05 0
+  translation 5 0 0.05
+  rotation 1 0 0 1.57079632679
   children [
     Shape {
       appearance Appearance {
@@ -70,7 +80,8 @@ Solid {
 
 # Waypoint B  (5, -5)
 Solid {
-  translation 5 0.05 -5
+  translation 5 -5 0.05
+  rotation 1 0 0 1.57079632679
   children [
     Shape {
       appearance Appearance {
@@ -89,7 +100,8 @@ Solid {
 
 # Waypoint C  (0, -5)
 Solid {
-  translation 0 0.05 -5
+  translation 0 -5 0.05
+  rotation 1 0 0 1.57079632679
   children [
     Shape {
       appearance Appearance {
@@ -108,7 +120,8 @@ Solid {
 
 # Waypoint D  (-5, -5)
 Solid {
-  translation -5 0.05 -5
+  translation -5 -5 0.05
+  rotation 1 0 0 1.57079632679
   children [
     Shape {
       appearance Appearance {
@@ -127,7 +140,8 @@ Solid {
 
 # Waypoint E  (-5, 0)
 Solid {
-  translation -5 0.05 0
+  translation -5 0 0.05
+  rotation 1 0 0 1.57079632679
   children [
     Shape {
       appearance Appearance {
@@ -149,11 +163,11 @@ Solid {
 # =============================================================================
 
 Mavic2Pro {
-  translation 0 0.1 0
-  rotation 0 1 0 0
+  translation 0 0 0.1
+  rotation 0 0 1 0
   name "Mavic 2 Pro"
   controller "mavic2pro_controller"
-  controllerArgs "--experiment baseline"
+  controllerArgs "--experiment tuned"
   customData ""
   supervisor FALSE
   synchronization TRUE
@@ -166,3 +180,4 @@ Mavic2Pro {
     }
   ]
 }
+

@@ -155,3 +155,22 @@ class TestPIDFromConfig:
         pid = PIDController.from_config(gains_dict)
         assert pid.integrator_limit == 10.0   # default
         assert pid.output_limit == 100.0      # default
+
+
+class TestPIDRateDamping:
+    """Verifies that direct measurement_rate correctly provides derivative damping without noise."""
+
+    def test_rate_damping_opposes_velocity(self):
+        """When measurement has a positive rate of change, d_term = -kd * rate opposes motion."""
+        pid = PIDController(kp=10.0, ki=0.0, kd=2.0)
+        # Target = 0, angle = 0, but rotating at +1.5 rad/s
+        output = pid.compute(setpoint=0.0, measurement=0.0, current_time=0.1, measurement_rate=1.5)
+        # P = 0, D = -2.0 * 1.5 = -3.0
+        assert output == pytest.approx(-3.0)
+
+    def test_rate_damping_on_first_step(self):
+        """Direct rate provides immediate damping on the very first time step."""
+        pid = PIDController(kp=10.0, ki=0.0, kd=3.0)
+        output = pid.compute(setpoint=0.0, measurement=0.0, current_time=0.0, measurement_rate=2.0)
+        assert output == pytest.approx(-6.0)
+

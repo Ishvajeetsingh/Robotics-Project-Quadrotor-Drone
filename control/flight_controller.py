@@ -59,6 +59,10 @@ class DroneState:
     vx: float = 0.0
     vy: float = 0.0
     vz: float = 0.0
+    # Angular rates (rad/s, from gyroscope)
+    roll_rate: float = 0.0
+    pitch_rate: float = 0.0
+    yaw_rate: float = 0.0
 
 
 @dataclass
@@ -169,6 +173,7 @@ class FlightController:
             setpoint=target_y,
             measurement=state.y,
             current_time=t,
+            measurement_rate=state.vy if abs(state.vy) > 1e-4 else None,
         )
 
         # ---- 2. Horizontal position loops → desired attitude angles ------
@@ -194,16 +199,19 @@ class FlightController:
             setpoint=desired_roll,
             measurement=state.roll,
             current_time=t,
+            measurement_rate=state.roll_rate if abs(state.roll_rate) > 1e-6 else None,
         )
         pitch_input = self.pitch_pid.compute(
             setpoint=desired_pitch,
             measurement=state.pitch,
             current_time=t,
+            measurement_rate=state.pitch_rate if abs(state.pitch_rate) > 1e-6 else None,
         )
         yaw_input = self.yaw_pid.compute(
             setpoint=target_yaw,
             measurement=state.yaw,
             current_time=t,
+            measurement_rate=state.yaw_rate if abs(state.yaw_rate) > 1e-6 else None,
         )
 
         # ---- 4. Mixer: combine into per-rotor speeds ---------------------
@@ -212,14 +220,14 @@ class FlightController:
         base_thrust = K_VERTICAL_THRUST + vertical_input + tilt_comp
 
         # Motor mixing equations (standard quadrotor X-configuration):
-        #   FL = base + roll + pitch - yaw   (CCW)
-        #   FR = base - roll + pitch + yaw   (CW  → negative sign convention)
-        #   RL = base + roll - pitch + yaw   (CW  → negative)
-        #   RR = base - roll - pitch - yaw   (CCW)
-        fl = base_thrust + roll_input + pitch_input - yaw_input
-        fr = base_thrust - roll_input + pitch_input + yaw_input
-        rl = base_thrust + roll_input - pitch_input + yaw_input
-        rr = base_thrust - roll_input - pitch_input - yaw_input
+        #   FL = base + roll - pitch - yaw   (front, left, CCW)
+        #   FR = base - roll - pitch + yaw   (front, right, CW)
+        #   RL = base + roll + pitch + yaw   (rear, left, CW)
+        #   RR = base - roll + pitch - yaw   (rear, right, CCW)
+        fl = base_thrust + roll_input - pitch_input - yaw_input
+        fr = base_thrust - roll_input - pitch_input + yaw_input
+        rl = base_thrust + roll_input + pitch_input + yaw_input
+        rr = base_thrust - roll_input + pitch_input - yaw_input
 
         # Clamp to non-negative (rotor cannot reverse)
         fl = max(0.0, fl)
