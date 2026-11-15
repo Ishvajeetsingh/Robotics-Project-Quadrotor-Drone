@@ -53,9 +53,31 @@ def make_df(
     desired_alt: float = 5.0,
     wp_ids: List[int] | None = None,
 ) -> pd.DataFrame:
-    """Create a minimal DataFrame that passes load_log validation."""
+    """Build a minimal valid flight-log frame for isolated metric tests.
+
+    Parameters
+    ----------
+    times : list[float]
+        Sample timestamps used by duration and ordering calculations.
+    actual_alt : list[float]
+        Measured altitude samples.
+    desired_alt : float
+        Constant altitude setpoint applied to every sample.
+    wp_ids : list[int] or None
+        Optional waypoint IDs; defaults to waypoint 1 for every sample.
+
+    Returns
+    -------
+    pandas.DataFrame
+        A frame containing every required log column, with derived altitude
+        and 3-D errors consistent with the supplied altitude values.
+    """
+    # Keep fixtures small while supplying the complete schema expected by the
+    # production loader and aggregate metric function.
     n = len(times)
     wp = wp_ids if wp_ids is not None else [1] * n
+    # Tests use desired-minus-actual altitude error, while metric calculations
+    # rely on its magnitude for RMSE and related performance measures.
     err_y = [d - a for d, a in zip([desired_alt] * n, actual_alt)]
     return pd.DataFrame({
         'time_s':      times,
@@ -78,23 +100,30 @@ def make_df(
 # ---------------------------------------------------------------------------
 
 class TestRMSE:
+    """Verify RMSE for perfect, constant, mixed, empty, and single samples."""
+
     def test_perfect_tracking(self):
+        """A zero-error array has zero RMSE."""
         errors = np.zeros(100)
         assert rmse(errors) == pytest.approx(0.0)
 
     def test_constant_error(self):
+        """A constant error has RMSE equal to its absolute magnitude."""
         errors = np.full(100, 2.0)
         assert rmse(errors) == pytest.approx(2.0)
 
     def test_mixed_errors(self):
+        """RMSE matches the square-root-of-mean-squares formula."""
         errors = np.array([1.0, -1.0, 2.0, -2.0])
         expected = math.sqrt((1 + 1 + 4 + 4) / 4)
         assert rmse(errors) == pytest.approx(expected, rel=1e-6)
 
     def test_empty_array_returns_nan(self):
+        """An empty input reports no numeric RMSE."""
         assert math.isnan(rmse(np.array([])))
 
     def test_single_value(self):
+        """One sample produces its own absolute error as RMSE."""
         errors = np.array([3.0])
         assert rmse(errors) == pytest.approx(3.0)
 
@@ -104,6 +133,8 @@ class TestRMSE:
 # ---------------------------------------------------------------------------
 
 class TestAltitudeSettlingTime:
+    """Verify continuous in-tolerance altitude settling behavior."""
+
     def test_never_settles_returns_none(self):
         """System with constant large error never settles."""
         times = list(range(20))
@@ -153,6 +184,7 @@ class TestAltitudeSettlingTime:
         assert result is None
 
     def test_single_row_returns_none(self):
+        """A single sample cannot demonstrate a continuous hold duration."""
         df = make_df([0.0], [5.0], desired_alt=5.0)
         result = altitude_settling_time(df, tolerance_m=0.3, duration_s=1.5)
         assert result is None
@@ -163,7 +195,10 @@ class TestAltitudeSettlingTime:
 # ---------------------------------------------------------------------------
 
 class TestAltitudeOvershoot:
+    """Verify positive altitude overshoot percentage handling."""
+
     def test_no_overshoot(self):
+        """Tracking that never exceeds the target has zero overshoot."""
         times = list(range(10))
         actual = [4.0, 4.5, 4.8, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0]
         df = make_df(times, actual, desired_alt=5.0)
@@ -171,6 +206,7 @@ class TestAltitudeOvershoot:
         assert os_pct == pytest.approx(0.0)
 
     def test_overshoot_percentage(self):
+        """The peak-to-target difference is converted to a percentage."""
         times = list(range(5))
         actual = [5.0, 5.5, 6.0, 5.0, 5.0]   # peak = 6.0, target = 5.0
         df = make_df(times, actual, desired_alt=5.0)
@@ -179,6 +215,7 @@ class TestAltitudeOvershoot:
         assert os_pct == pytest.approx(20.0, rel=0.01)
 
     def test_zero_desired_altitude_returns_nan(self):
+        """A zero target cannot be used as a percentage denominator."""
         df = make_df([0.0, 1.0], [0.5, 0.5], desired_alt=0.0)
         result = altitude_overshoot(df)
         assert math.isnan(result)
@@ -189,7 +226,10 @@ class TestAltitudeOvershoot:
 # ---------------------------------------------------------------------------
 
 class TestWaypointSuccessRate:
+    """Verify waypoint counting, empty navigation, and partial logs."""
+
     def test_all_waypoints_reached(self):
+        """Distinct logged IDs equal the maximum ID for full completion."""
         n = 20
         wp_ids = [1]*5 + [2]*5 + [3]*5 + [4]*5
         df = make_df(list(range(n)), [5.0]*n, wp_ids=wp_ids)
@@ -222,12 +262,16 @@ class TestWaypointSuccessRate:
 # ---------------------------------------------------------------------------
 
 class TestMissionCompletionTime:
+    """Verify elapsed time uses the first and last timestamps."""
+
     def test_correct_duration(self):
+        """A log beginning at zero spans its final timestamp."""
         times = [0.0, 1.0, 5.0, 10.0]
         df = make_df(times, [5.0]*4)
         assert mission_completion_time(df) == pytest.approx(10.0)
 
     def test_non_zero_start(self):
+        """Duration is independent of the absolute start timestamp."""
         times = [5.0, 6.0, 7.0]
         df = make_df(times, [5.0]*3)
         assert mission_completion_time(df) == pytest.approx(2.0)
@@ -238,8 +282,10 @@ class TestMissionCompletionTime:
 # ---------------------------------------------------------------------------
 
 class TestComputeMetrics:
+    """Verify aggregate metrics on a deterministic synthetic mission."""
+
     def _make_realistic_df(self) -> pd.DataFrame:
-        """Simulate a drone reaching altitude 5 m with some oscillation."""
+        """Simulate a drone reaching 5 m with a simple damped response."""
         times = [i * 0.032 for i in range(500)]
         desired = 5.0
         actual_alt = []
@@ -255,6 +301,7 @@ class TestComputeMetrics:
         return make_df(times, actual_alt, desired_alt=desired, wp_ids=wp_ids)
 
     def test_metrics_have_required_keys(self):
+        """The aggregate result exposes the fields needed by reporting."""
         df = self._make_realistic_df()
         m  = compute_metrics(df, controller_name="Test")
         required = [
@@ -266,17 +313,20 @@ class TestComputeMetrics:
             assert key in m, f"Missing key: {key}"
 
     def test_rmse_is_non_negative(self):
+        """RMSE values cannot be negative because errors are squared."""
         df = self._make_realistic_df()
         m  = compute_metrics(df)
         for key in ('alt_rmse_m', 'x_rmse_m', 'z_rmse_m', '3d_rmse_m'):
             assert m[key] >= 0.0, f"{key} should be non-negative"
 
     def test_overshoot_is_non_negative(self):
+        """Overshoot is clamped at zero when there is no positive peak."""
         df = self._make_realistic_df()
         m  = compute_metrics(df)
         assert m['alt_overshoot_pct'] >= 0.0
 
     def test_max_error_greater_than_mean_error(self):
+        """The maximum absolute error cannot be below its mean."""
         df = self._make_realistic_df()
         m  = compute_metrics(df)
         assert m['alt_max_err_m'] >= m['alt_mean_err_m']
@@ -287,11 +337,17 @@ class TestComputeMetrics:
 # ---------------------------------------------------------------------------
 
 class TestLoadLog:
+    """Verify CSV validation, cleaning, and chronological normalization."""
+
     def _write_csv(self, rows: List[dict], tmp_path: Path) -> Path:
+        """Write fixture rows to a temporary CSV and return its path."""
+        # Empty fixtures intentionally create a zero-byte file for the
+        # loader's empty-file error path.
         if not rows:
             p = tmp_path / "empty.csv"
             p.write_text("")
             return p
+        # DictWriter preserves the fixture's required-column schema.
         p = tmp_path / "test_log.csv"
         with open(p, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -300,6 +356,7 @@ class TestLoadLog:
         return p
 
     def _valid_row(self, t: float = 0.0, wp: int = 1) -> dict:
+        """Return one complete numeric flight-log row."""
         return {
             'time_s': t, 'waypoint_id': wp,
             'desired_alt': 5.0, 'actual_alt': 5.0,
@@ -310,28 +367,33 @@ class TestLoadLog:
         }
 
     def test_valid_file_loads(self, tmp_path):
+        """A complete CSV becomes a DataFrame with all rows retained."""
         rows = [self._valid_row(t=float(i)) for i in range(10)]
         p = self._write_csv(rows, tmp_path)
         df = load_log(p)
         assert len(df) == 10
 
     def test_file_not_found(self, tmp_path):
+        """Missing paths raise the loader's explicit filesystem error."""
         with pytest.raises(FileNotFoundError):
             load_log(tmp_path / "nonexistent.csv")
 
     def test_empty_file_raises(self, tmp_path):
+        """A zero-byte CSV is rejected as unusable input."""
         p = tmp_path / "empty.csv"
         p.write_text("")
         with pytest.raises(ValueError):
             load_log(p)
 
     def test_missing_columns_raises(self, tmp_path):
+        """A partial schema raises a descriptive validation error."""
         p = tmp_path / "bad.csv"
         p.write_text("time_s,waypoint_id\n1,2\n")
         with pytest.raises(ValueError, match="missing required columns"):
             load_log(p)
 
     def test_invalid_values_dropped(self, tmp_path):
+        """Rows with non-numeric required values are removed during cleaning."""
         rows = [self._valid_row(t=float(i)) for i in range(5)]
         # Add a row with a non-numeric value
         bad_row = self._valid_row(t=5.0)
@@ -343,6 +405,7 @@ class TestLoadLog:
         assert len(df) == 5
 
     def test_sorted_by_time(self, tmp_path):
+        """Loaded samples are sorted into chronological order."""
         rows = [self._valid_row(t=float(5-i)) for i in range(5)]   # descending
         p = self._write_csv(rows, tmp_path)
         df = load_log(p)
@@ -354,7 +417,10 @@ class TestLoadLog:
 # ---------------------------------------------------------------------------
 
 class TestFormatComparisonTable:
+    """Verify comparison formatting for populated and edge-case inputs."""
+
     def test_two_experiments(self):
+        """Two labeled metric dictionaries produce a readable table."""
         m1 = {'controller': 'Baseline', 'alt_rmse_m': 0.5, 'alt_mean_err_m': 0.3,
                'x_rmse_m': 0.2, 'z_rmse_m': 0.2, '3d_rmse_m': 0.6,
                'alt_overshoot_pct': 10.0, 'alt_settling_time_s': 4.0,
@@ -371,10 +437,12 @@ class TestFormatComparisonTable:
         assert 'RMSE' in table
 
     def test_empty_list(self):
+        """An empty input still returns a useful non-empty message."""
         result = format_comparison_table([])
         assert result  # non-empty string
 
     def test_infinite_settling_time_displays_never(self):
+        """Unsettled experiments are rendered as 'Never' rather than infinity."""
         m = {'controller': 'Test', 'alt_rmse_m': 0.5, 'alt_mean_err_m': 0.4,
              'x_rmse_m': 0.3, 'z_rmse_m': 0.3, '3d_rmse_m': 0.6,
              'alt_overshoot_pct': 0.0, 'alt_settling_time_s': float('inf'),
